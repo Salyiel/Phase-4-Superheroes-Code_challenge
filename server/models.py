@@ -1,94 +1,75 @@
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import MetaData
-from sqlalchemy.orm import validates, relationship
+from sqlalchemy.orm import validates
 from sqlalchemy.ext.associationproxy import association_proxy
 from sqlalchemy_serializer import SerializerMixin
 
-# Configure metadata for naming conventions
 metadata = MetaData(naming_convention={
     "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
 })
 
-# Initialize the database
 db = SQLAlchemy(metadata=metadata)
 
-# Hero model
 class Hero(db.Model, SerializerMixin):
     __tablename__ = 'heroes'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String, nullable=False)
-    super_name = db.Column(db.String, nullable=False)
+    name = db.Column(db.String)
+    super_name = db.Column(db.String)
 
-    # One-to-many relationship with HeroPower
-    hero_powers = relationship('HeroPower', back_populates='hero', cascade='all, delete-orphan')
-    
-    # Association proxy to access related powers through hero_powers
-    powers = association_proxy('hero_powers', 'power')
+    # Define the relationship with HeroPower, use back_populates to avoid conflict
+    hero_powers = db.relationship('HeroPower', back_populates='hero', cascade='all, delete')
 
-    # Serialization rules
-    serialize_rules = ('-hero_powers.hero', '-powers.heroes')
+    # Serialization rules to avoid circular references
+    serialize_rules = ('-hero_powers.hero',)
 
     def __repr__(self):
-        return f'<Hero {self.id} {self.name}>'
+        return f'<Hero {self.id}>'
 
-# Power model
+
 class Power(db.Model, SerializerMixin):
     __tablename__ = 'powers'
 
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(db.String, nullable=False, unique=True)
-    description = db.Column(db.String, nullable=False)
+    name = db.Column(db.String)
+    description = db.Column(db.String)
 
-    # One-to-many relationship with HeroPower
-    hero_powers = relationship('HeroPower', back_populates='power', cascade='all, delete-orphan')
-    
-    # Association proxy to access related heroes through hero_powers
-    heroes = association_proxy('hero_powers', 'hero')
+    # Define the relationship with HeroPower
+    hero_powers = db.relationship('HeroPower', back_populates='power')
 
-    # Serialization rules
-    serialize_rules = ('-hero_powers.power', '-heroes.powers')
-
-    # Validation for name and description
-    @validates('name')
-    def validate_name(self, key, name):
-        if not name or len(name) < 3:
-            raise ValueError("Power name must be at least 3 characters long.")
-        return name
+    # Serialization rules: explicitly exclude 'hero_powers'
+    serialize_rules = ('-hero_powers',)  # Exclude hero_powers
 
     @validates('description')
     def validate_description(self, key, description):
-        if not description or len(description) < 10:
-            raise ValueError("Description must be at least 10 characters long.")
+        if description and len(description) < 20:
+            raise ValueError("Description must be at least 20 characters long")
         return description
 
     def __repr__(self):
-        return f'<Power {self.id} {self.name}>'
+        return f'<Power {self.id}>'
+    
 
-# HeroPower model (join table)
 class HeroPower(db.Model, SerializerMixin):
     __tablename__ = 'hero_powers'
 
     id = db.Column(db.Integer, primary_key=True)
     strength = db.Column(db.String, nullable=False)
 
-    # Foreign keys to Hero and Power models
+    # Foreign key relationships
     hero_id = db.Column(db.Integer, db.ForeignKey('heroes.id'), nullable=False)
     power_id = db.Column(db.Integer, db.ForeignKey('powers.id'), nullable=False)
 
-    # Relationships
-    hero = relationship('Hero', back_populates='hero_powers')
-    power = relationship('Power', back_populates='hero_powers')
-
-    # Serialization rules
-    serialize_rules = ('-hero.hero_powers', '-power.hero_powers')
+    # Define the back_populates relationship
+    hero = db.relationship('Hero', back_populates='hero_powers')
+    power = db.relationship('Power', back_populates='hero_powers')
 
     # Validation for strength
     @validates('strength')
     def validate_strength(self, key, strength):
         if strength not in ['Strong', 'Weak', 'Average']:
-            raise ValueError("Strength must be one of: Strong, Weak, or Average.")
+            raise ValueError("Strength must be one of: 'Strong', 'Weak', 'Average'")
         return strength
 
     def __repr__(self):
-        return f'<HeroPower {self.id} Hero: {self.hero_id} Power: {self.power_id} Strength: {self.strength}>'
+        return f'<HeroPower {self.id}>'
